@@ -1,11 +1,11 @@
-# This program adds two numbers
+# This program subtracts two numbers
 
 # store input numbers
 num1 = float(input("Enter first number: "))
 num2 = float(input("Enter second number: "))
 
-# add two numbers
-total = num1 + num2
+# subtract second number from first
+difference = num1 - num2
 
-# display the sum
-print("The sum of", num1, "and", num2, "is", total)
+# display the result
+print("The difference of", num1, "minus", num2, "is", difference)
