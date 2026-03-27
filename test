@@ -1,0 +1,21 @@
+import random
+
+print("Welcome to the Number Guessing Game!")
+
+# computer picks a random number between 1 and 100
+secret = random.randint(1, 100)
+
+attempts = 0
+
+while True:
+    guess = int(input("Guess a number between 1 and 100: "))
+    attempts += 1
+
+    if guess < secret:
+        print("Too low, try again!")
+    elif guess > secret:
+        print("Too high, try again!")
+    else:
+        print(f"Correct! The number was {secret}.")
+        print(f"You guessed it in {attempts} attempts.")
+        break
