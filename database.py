@@ -2,7 +2,7 @@
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from Models import Base  # imports the shared DeclarativeBase from your models file
+from models import Base  # imports the shared DeclarativeBase from your models file
 
 # ---------------------------------------------------------------------------
 # Connection URL
