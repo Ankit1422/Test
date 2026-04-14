@@ -2,7 +2,7 @@
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from sqlalchemy.orm import Session
-
+from ai_engine import categorize_transaction
 import crud
 import models
 import schemas
@@ -96,83 +96,36 @@ def create_transaction(
 ):
     """Record a new financial transaction for the specified user.
 
+    If no category is provided (or it is an empty string), the description
+    is automatically sent to Gemini to assign a category before saving.
+
     - Returns **404 Not Found** if the user does not exist.
-    - `user_id` is taken from the URL path, never the request body,
-      so a client cannot write to another user's account.
+    - Returns **503 Service Unavailable** if AI categorization fails, so the
+      transaction is never silently saved with a missing category.
     """
+    # 1. Confirm the user exists
     user = crud.get_user_by_id(db, user_id=user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User with id={user_id} not found.",
         )
+
+    # 2. Auto-categorize if category is missing or blank
+    if not payload.category or not payload.category.strip():
+        try:
+            assigned_category = categorize_transaction(payload.description)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"AI categorization failed: {str(e)}. "
+                        "Provide a category manually or retry later.",
+            )
+        # Pydantic models are immutable — rebuild with the new category
+        payload = payload.model_copy(update={"category": assigned_category})
+
+    # 3. Save to database
     return crud.create_transaction(db, payload, user_id=user_id)
-
-
-@app.get(
-    "/users/{user_id}/transactions/",
-    response_model=list[schemas.TransactionResponse],
-    summary="List all transactions for a user",
-    tags=["Transactions"],
-)
-def list_transactions(
-    user_id: int,
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db),
-):
-    """Return a paginated list of transactions for the specified user.
-
-    - Results are ordered by **date descending** (most recent first).
-    - Returns **404 Not Found** if the user does not exist.
-    - Use `skip` and `limit` query parameters for pagination:
-      - `GET /users/1/transactions/?skip=0&limit=20` → page 1
-      - `GET /users/1/transactions/?skip=20&limit=20` → page 2
-    """
-    user = crud.get_user_by_id(db, user_id=user_id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id={user_id} not found.",
-        )
-    return crud.get_transactions_by_user(db, user_id=user_id, skip=skip, limit=limit)
-
-
-@app.get(
-    "/users/{user_id}/transactions/{transaction_id}",
-    response_model=schemas.TransactionResponse,
-    summary="Get a single transaction",
-    tags=["Transactions"],
-)
-def get_transaction(
-    user_id: int,
-    transaction_id: int,
-    db: Session = Depends(get_db),
-):
-    """Fetch a single transaction by its ID.
-
-    - Returns **404 Not Found** if the user or transaction does not exist.
-    - Returns **403 Forbidden** if the transaction does not belong to the user.
-    """
-    user = crud.get_user_by_id(db, user_id=user_id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id={user_id} not found.",
-        )
-    transaction = crud.get_transaction_by_id(db, transaction_id=transaction_id)
-    if transaction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Transaction with id={transaction_id} not found.",
-        )
-    if transaction.user_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This transaction does not belong to the specified user.",
-        )
-    return transaction
-
 
 # ===========================================================================
 # AI SUGGESTION ENDPOINTS
